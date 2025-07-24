@@ -41,6 +41,7 @@ let UserController = class UserController {
                 loseCount: result.user.loseCount,
                 reward: result.user.reward,
                 winStreak: result.user.winStreak,
+                maxWinStreak: result.user.maxWinStreak,
             }
         };
     }

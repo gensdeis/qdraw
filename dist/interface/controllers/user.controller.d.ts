@@ -19,6 +19,7 @@ export declare class UserController {
             loseCount: number;
             reward: number;
             winStreak: number;
+            maxWinStreak: number;
         };
     }>;
     me(req: Request): Promise<import("../../domain/user/user.entity").User | null>;
