@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Eastern Quick Draw Game</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+        }
+
+        .game-container {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            max-width: 500px;
+            width: 100%;
+            text-align: center;
+        }
+
+        .login-section {
+            margin-bottom: 30px;
+        }
+
+        .game-section {
+            display: none;
+        }
+
+        .game-section.active {
+            display: block;
+        }
+
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 20px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .status {
+            font-size: 1.2em;
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .status.waiting {
+            background: rgba(255, 193, 7, 0.3);
+            border: 2px solid #ffc107;
+        }
+
+        .status.ready {
+            background: rgba(40, 167, 69, 0.3);
+            border: 2px solid #28a745;
+        }
+
+        .status.playing {
+            background: rgba(220, 53, 69, 0.3);
+            border: 2px solid #dc3545;
+        }
+
+        .game-button {
+            width: 200px;
+            height: 200px;
+            border-radius: 50%;
+            border: none;
+            background: linear-gradient(45deg, #ff6b6b, #ee5a24);
+            color: white;
+            font-size: 2em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            margin: 20px auto;
+            display: block;
+        }
+
+        .game-button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+        }
+
+        .game-button:active {
+            transform: scale(0.95);
+        }
+
+        .game-button.disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .game-button.fake {
+            background: linear-gradient(45deg, #ffa726, #ff9800);
+        }
+
+        .game-button.normal {
+            background: linear-gradient(45deg, #4caf50, #8bc34a);
+        }
+
+        .input-group {
+            margin: 15px 0;
+        }
+
+        input {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            background: rgba(255, 255, 255, 0.9);
+            color: #333;
+        }
+
+        button {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin: 10px 0;
+        }
+
+        .btn-primary {
+            background: linear-gradient(45deg, #007bff, #0056b3);
+            color: white;
+        }
+
+        .btn-success {
+            background: linear-gradient(45deg, #28a745, #1e7e34);
+            color: white;
+        }
+
+        .btn-danger {
+            background: linear-gradient(45deg, #dc3545, #c82333);
+            color: white;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .log {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 20px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+            text-align: left;
+        }
+
+        .log-entry {
+            margin: 5px 0;
+            padding: 5px;
+            border-radius: 5px;
+        }
+
+        .log-entry.info {
+            background: rgba(0, 123, 255, 0.3);
+        }
+
+        .log-entry.success {
+            background: rgba(40, 167, 69, 0.3);
+        }
+
+        .log-entry.warning {
+            background: rgba(255, 193, 7, 0.3);
+        }
+
+        .log-entry.error {
+            background: rgba(220, 53, 69, 0.3);
+        }
+
+        .stats {
+            display: flex;
+            justify-content: space-around;
+            margin: 20px 0;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 1.5em;
+            font-weight: bold;
+        }
+
+        .stat-label {
+            font-size: 0.9em;
+            opacity: 0.8;
+        }
+
+        .countdown {
+            font-size: 3em;
+            font-weight: bold;
+            margin: 20px 0;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        .result {
+            font-size: 1.5em;
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 10px;
+        }
+
+        .result.win {
+            background: rgba(40, 167, 69, 0.3);
+            border: 2px solid #28a745;
+        }
+
+        .result.lose {
+            background: rgba(220, 53, 69, 0.3);
+            border: 2px solid #dc3545;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <h1>🎮 Eastern Quick Draw</h1>
+        
+        <!-- 랭킹 섹션 -->
+        <div class="ranking-section" id="rankingSection" style="display:none; margin-bottom: 20px;">
+            <div style="display: flex; gap: 40px; justify-content: center;">
+                <div>
+                    <h3>🏆 점수 랭킹</h3>
+                    <table id="rewardRanking" border="1" style="min-width:180px; background:rgba(255,255,255,0.1);">
+                        <thead><tr><th>순위</th><th>이름</th><th>점수</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+                <div>
+                    <h3>🔥 연승 랭킹</h3>
+                    <table id="winStreakRanking" border="1" style="min-width:180px; background:rgba(255,255,255,0.1);">
+                        <thead><tr><th>순위</th><th>이름</th><th>최고 연승</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 로그인 섹션 -->
+        <div class="login-section" id="loginSection">
+            <div class="input-group">
+                <input type="text" id="username" placeholder="사용자명" value="player1">
+            </div>
+            <div class="input-group">
+                <input type="password" id="password" placeholder="비밀번호" value="password123">
+            </div>
+            <button class="btn-primary" onclick="login()">로그인</button>
+            <button class="btn-success" onclick="register()">회원가입</button>
+        </div>
+
+        <!-- 게임 섹션 -->
+        <div class="game-section" id="gameSection">
+            <div class="stats">
+                <div class="stat-item">
+                    <div class="stat-value" id="winCount">0</div>
+                    <div class="stat-label">승리</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="loseCount">0</div>
+                    <div class="stat-label">패배</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="score">0</div>
+                    <div class="stat-label">점수</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="winStreak">0</div>
+                    <div class="stat-label">연승</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="maxWinStreak">0</div>
+                    <div class="stat-label">최고 연승</div>
+                </div>
+            </div>
+
+            <div class="status" id="status">대기 중...</div>
+            
+            <button class="btn-danger" id="cancelButton" onclick="cancelMatch()" style="display: none;">매칭 취소</button>
+            
+            <div class="countdown" id="countdown" style="display: none;">3</div>
+            
+            <button class="game-button" id="gameButton" onclick="clickButton()" disabled>
+                대기 중...
+            </button>
+            
+            <div class="result" id="result" style="display: none;"></div>
+            
+            <button class="btn-success" id="playAgainButton" onclick="playAgain()" style="display: none;">다시 플레이</button>
+        </div>
+
+        <!-- 로그 -->
+        <div class="log" id="log"></div>
+    </div>
+
+    <script>
+        const SERVER_IP = '172.28.80.16';
+        const API_BASE_URL = `http://${SERVER_IP}:13001`;
+        let socket;
+        let currentUser = null;
+        let matchId = null;
+        let gameId = null;
+        let isInMatch = false;
+        let isGameActive = false;
+        let countdownInterval = null;
+
+        // 로그 함수
+        function addLog(message, type = 'info') {
+            const log = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            log.appendChild(entry);
+            log.scrollTop = log.scrollHeight;
+        }
+
+        // 로그인
+        async function login() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/user/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    currentUser = data.user;
+                    localStorage.setItem('token', data.token);
+                    document.getElementById('loginSection').style.display = 'none';
+                    document.getElementById('gameSection').classList.add('active');
+                    document.getElementById('rankingSection').style.display = 'block';
+                    addLog(`로그인 성공: ${username}`, 'success');
+                    updateUserStatsUI();
+                    fetchAndRenderRankings();
+                    connectSocket();
+                    // 최초 로그인 후 자동 매칭 요청
+                    if (currentUser) {
+                        requestMatch();
+                    }
+                } else {
+                    addLog(`로그인 실패: ${data.message}`, 'error');
+                }
+            } catch (error) {
+                addLog(`로그인 오류: ${error.message}`, 'error');
+            }
+        }
+
+        // 회원가입
+        async function register() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/user/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    addLog(`회원가입 성공: ${username}`, 'success');
+                } else {
+                    addLog(`회원가입 실패: ${data.message}`, 'error');
+                }
+            } catch (error) {
+                addLog(`회원가입 오류: ${error.message}`, 'error');
+            }
+        }
+
+        function updateUserStatsUI() {
+            if (!currentUser) return;
+            document.getElementById('winCount').textContent = currentUser.winCount || 0;
+            document.getElementById('loseCount').textContent = currentUser.loseCount || 0;
+            document.getElementById('score').textContent = currentUser.reward || 0;
+            document.getElementById('winStreak').textContent = currentUser.winStreak || 0;
+            document.getElementById('maxWinStreak').textContent = currentUser.maxWinStreak || 0;
+        }
+
+        async function fetchAndRenderRankings() {
+            // 점수 랭킹
+            const rewardRes = await fetch(`${API_BASE_URL}/user/rank/reward`);
+            const rewardList = await rewardRes.json();
+            renderRankingTable('rewardRanking', rewardList, 'reward');
+            // 연승 랭킹 (최고 연승 기준)
+            const winStreakRes = await fetch(`${API_BASE_URL}/user/rank/winstreak`);
+            const winStreakList = await winStreakRes.json();
+            renderRankingTable('winStreakRanking', winStreakList, 'maxWinStreak');
+        }
+
+        function renderRankingTable(tableId, list, valueKey) {
+            const tbody = document.querySelector(`#${tableId} tbody`);
+            tbody.innerHTML = '';
+            list.forEach((user, idx) => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td>${idx + 1}</td><td>${user.username}</td><td>${user[valueKey]}</td>`;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // 소켓 연결
+        function connectSocket() {
+            socket = io(`ws://${SERVER_IP}:13001/game`, {
+                query: { userId: currentUser.id },
+                transports: ['websocket']
+            });
+
+            socket.on('connect', () => {
+                addLog('서버에 연결되었습니다.', 'success');
+                updateStatus('연결됨', 'ready');
+            });
+
+            socket.on('disconnect', () => {
+                addLog('서버와 연결이 끊어졌습니다.', 'error');
+                updateStatus('연결 끊김', 'waiting');
+            });
+
+            socket.on('match_waiting', (data) => {
+                addLog('매칭 대기 중...', 'warning');
+                updateStatus('매칭 대기 중...', 'waiting');
+                isInMatch = true;
+                matchId = data.match.id;
+                document.getElementById('cancelButton').style.display = 'block';
+            });
+
+            socket.on('match_found', (data) => {
+                addLog('매칭 완료! 상대방을 찾았습니다.', 'success');
+                updateStatus('매칭 완료! 방 준비 중...', 'ready');
+                matchId = data.match.id;
+
+                // 매칭 버튼 UI 갱신
+                document.getElementById('cancelButton').style.display = 'none';
+
+                // 1초 후 방 준비 신호 전송
+                setTimeout(() => {
+                    socket.emit('room_ready', { matchId, userId: currentUser.id });
+                    addLog('방 준비 신호 전송', 'info');
+                }, 1000);
+            });
+
+            socket.on('signal', (data) => {
+                const clientReceiveTime = Date.now();
+                const serverTime = data.timestamp;
+                const timeDiff = clientReceiveTime - serverTime;
+                
+                addLog(`신호 수신: ${data.type} (value: ${data.value}), 네트워크 지연: ${timeDiff}ms`, 'info');
+                
+                if (data.gameId) {
+                    gameId = data.gameId;
+                    addLog(`게임 ID: ${gameId}`, 'info');
+                }
+
+                if (data.value === 1) {
+                    // 정상 신호 - 게임 시작
+                    startGame(data, timeDiff);
+                } else {
+                    // 가짜 신호
+                    showFakeSignal(data);
+                }
+            });
+
+            socket.on('game_result', async (data) => {
+                isGameActive = false;
+                clearInterval(countdownInterval);
+                
+                if (data.winnerId === currentUser.id) {
+                    addLog(`🎉 승리! 점수: ${data.reward}점`, 'success');
+                    showResult('승리!', 'win');
+                    updateStats(data.reward, true);
+                } else {
+                    addLog(`😢 패배...`, 'error');
+                    showResult('패배...', 'lose');
+                    updateStats(0, false);
+                }
+                // 최신 user 정보 즉시 반영
+                if (data.winnerUser && data.winnerUser.id === currentUser.id) {
+                    currentUser = data.winnerUser;
+                    updateUserStatsUI();
+                } else if (data.loserUser && data.loserUser.id === currentUser.id) {
+                    currentUser = data.loserUser;
+                    updateUserStatsUI();
+                }
+                // 랭킹 최신화
+                fetchAndRenderRankings();
+                document.getElementById('playAgainButton').style.display = 'block';
+                document.getElementById('gameButton').disabled = true;
+                document.getElementById('gameButton').textContent = '게임 종료';
+            });
+
+            socket.on('status_update', (data) => {
+                addLog(`상태 업데이트: ${data.status}`, 'info');
+            });
+
+            socket.on('error', (data) => {
+                addLog(`오류: ${data.message}`, 'error');
+            });
+        }
+
+        // 매칭 요청
+        function requestMatch() {
+            if (!socket || !currentUser) return;
+            
+            socket.emit('match_request', { userId: currentUser.id });
+            addLog('매칭 요청 전송', 'info');
+            updateStatus('매칭 요청 중...', 'waiting');
+        }
+
+        // 매칭 취소
+        function cancelMatch() {
+            if (!socket || !matchId) return;
+            
+            socket.emit('room_cancel', { matchId, userId: currentUser.id });
+            addLog('매칭 취소', 'warning');
+            updateStatus('매칭 취소됨', 'waiting');
+            
+            document.getElementById('cancelButton').style.display = 'none';
+            isInMatch = false;
+            matchId = null;
+        }
+
+        // 게임 시작
+        function startGame(signalData, timeDiff) {
+            isGameActive = true;
+            updateStatus('게임 시작! 버튼을 클릭하세요!', 'playing');
+            
+            const gameButton = document.getElementById('gameButton');
+            gameButton.disabled = true;
+            gameButton.textContent = 'CLICK!';
+            gameButton.className = 'game-button normal';
+            
+            // 카운트다운 시작
+            let countdown = 3;
+            const countdownElement = document.getElementById('countdown');
+            countdownElement.style.display = 'block';
+            
+            countdownInterval = setInterval(() => {
+                countdownElement.textContent = countdown;
+                countdown--;
+                
+                if (countdown < 0) {
+                    clearInterval(countdownInterval);
+                    countdownElement.style.display = 'none';
+                    // 유저가 직접 클릭할 수 있도록 버튼 활성화
+                    gameButton.disabled = false;
+                    gameButton.textContent = 'CLICK!';
+                    gameButton.className = 'game-button normal';
+                }
+            }, 1000);
+        }
+
+        // 가짜 신호 표시
+        function showFakeSignal(signalData) {
+            const gameButton = document.getElementById('gameButton');
+            gameButton.disabled = false;
+            gameButton.textContent = `FAKE (${signalData.value})`;
+            gameButton.className = 'game-button fake';
+            
+            setTimeout(() => {
+                if (!isGameActive) {
+                    gameButton.disabled = true;
+                    gameButton.textContent = '대기 중...';
+                    gameButton.className = 'game-button';
+                }
+            }, 2000);
+        }
+
+        // 버튼 클릭
+        function clickButton() {
+            if (!isGameActive || !socket || !gameId) return;
+
+            const sendTime = Date.now();
+            console.log('신호 전송 시점:', sendTime, 'userId:', currentUser.id);
+            socket.emit('send_signal', {
+                gameId,
+                userId: currentUser.id,
+                type: 'NORMAL',
+                value: 1,
+                clientSendTime: sendTime
+            });
+            
+            addLog('신호 전송!', 'info');
+            
+            const gameButton = document.getElementById('gameButton');
+            gameButton.disabled = true;
+            gameButton.textContent = '전송됨';
+            gameButton.className = 'game-button disabled';
+        }
+
+        // 결과 표시
+        function showResult(message, type) {
+            const resultElement = document.getElementById('result');
+            resultElement.textContent = message;
+            resultElement.className = `result ${type}`;
+            resultElement.style.display = 'block';
+        }
+
+        // 통계 업데이트
+        function updateStats(score, isWin) {
+            const winCountElement = document.getElementById('winCount');
+            const loseCountElement = document.getElementById('loseCount');
+            const scoreElement = document.getElementById('score');
+            const winStreakElement = document.getElementById('winStreak');
+            if (isWin) {
+                winCountElement.textContent = parseInt(winCountElement.textContent) + 1;
+                // 연승은 서버에서 관리하므로, 새로고침/로그인 시 최신값 반영됨
+            } else {
+                loseCountElement.textContent = parseInt(loseCountElement.textContent) + 1;
+                // 패배 시 연승은 서버에서 0으로 초기화됨
+            }
+            scoreElement.textContent = parseInt(scoreElement.textContent) + score;
+            // 랭킹 갱신
+            fetchAndRenderRankings();
+        }
+
+        // 다시 플레이
+        function playAgain() {
+            document.getElementById('result').style.display = 'none';
+            document.getElementById('playAgainButton').style.display = 'none';
+            document.getElementById('gameButton').disabled = true;
+            document.getElementById('gameButton').textContent = '대기 중...';
+            document.getElementById('gameButton').className = 'game-button';
+            updateStatus('대기 중...', 'ready');
+
+            isGameActive = false;
+            gameId = null;
+            matchId = null;
+            isInMatch = false;
+
+            // 다시 매칭 요청
+            requestMatch();
+        }
+
+        // 상태 업데이트
+        function updateStatus(message, type) {
+            const statusElement = document.getElementById('status');
+            statusElement.textContent = message;
+            statusElement.className = `status ${type}`;
+        }
+
+        // 페이지 로드 시 초기화
+        window.onload = function() {
+            addLog('게임 클라이언트가 로드되었습니다.', 'info');
+        };
+    </script>
+</body>
+</html> 
