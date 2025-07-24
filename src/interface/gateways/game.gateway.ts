@@ -127,12 +127,16 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
         console.log(`🎮 게임 생성됨: ${game.id} (매치: ${data.matchId})`);
         
         const signal = this.getNextSignal(data.matchId);
+        // 3~5초 랜덤 카운트다운 후 버튼 활성화 시각(ms)
+        const randomCountdown = Math.floor(Math.random() * 3) + 3; // 3,4,5
+        const canFireAt = Date.now() + randomCountdown * 1000;
         const signalPayload = { 
           ...signal, 
           gameId: game.id,
           matchId: data.matchId,
           timestamp: Date.now(), // 정확한 타임스탬프 추가
-          serverTime: new Date().toISOString()
+          serverTime: new Date().toISOString(),
+          canFireAt, // 버튼 활성화 시각(ms)
         };
         
         // 병렬로 신호 전송

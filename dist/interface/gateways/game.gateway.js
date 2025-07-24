@@ -119,12 +119,15 @@ let GameGateway = GameGateway_1 = class GameGateway {
                 const game = await this.gameUseCase.createGame(data.matchId, match.user1Id, match.user2Id);
                 console.log(`🎮 게임 생성됨: ${game.id} (매치: ${data.matchId})`);
                 const signal = this.getNextSignal(data.matchId);
+                const randomCountdown = Math.floor(Math.random() * 3) + 3;
+                const canFireAt = Date.now() + randomCountdown * 1000;
                 const signalPayload = {
                     ...signal,
                     gameId: game.id,
                     matchId: data.matchId,
                     timestamp: Date.now(),
-                    serverTime: new Date().toISOString()
+                    serverTime: new Date().toISOString(),
+                    canFireAt,
                 };
                 await this.broadcastToMatch(match, 'signal', signalPayload);
                 console.log(`📡 신호 전송 완료: ${signal.type} (value: ${signal.value})`);

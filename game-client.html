@@ -562,25 +562,22 @@
             gameButton.textContent = '대기 중...';
             gameButton.className = 'game-button disabled';
             
-            // 3~5초 랜덤 카운트다운
-            const randomCountdown = Math.floor(Math.random() * 3) + 3; // 3,4,5
-            let countdown = randomCountdown;
+            // 서버에서 받은 canFireAt(ms)까지 남은 시간 계산
+            const now = Date.now();
+            const canFireAt = signalData.canFireAt;
+            let waitMs = canFireAt - now;
+            if (waitMs < 0) waitMs = 0;
             const countdownElement = document.getElementById('countdown');
             countdownElement.style.display = 'block';
             countdownElement.textContent = '';
-
-            countdownInterval = setInterval(() => {
-                // 숫자 미표시, 버튼만 회색 유지
-                countdown--;
-                if (countdown <= 0) {
-                    clearInterval(countdownInterval);
-                    countdownElement.style.display = 'none';
-                    // 버튼 활성화 및 빨간색으로 변경
-                    gameButton.disabled = false;
-                    gameButton.textContent = 'CLICK!';
-                    gameButton.className = 'game-button btn-danger';
-                }
-            }, 1000);
+            
+            // 버튼 활성화 타이머
+            setTimeout(() => {
+                countdownElement.style.display = 'none';
+                gameButton.disabled = false;
+                gameButton.textContent = 'CLICK!';
+                gameButton.className = 'game-button btn-danger';
+            }, waitMs);
         }
 
         // 가짜 신호 표시
