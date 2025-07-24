@@ -127,23 +127,24 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
         console.log(`🎮 게임 생성됨: ${game.id} (매치: ${data.matchId})`);
         
         const signal = this.getNextSignal(data.matchId);
-        // 3~5초 랜덤 카운트다운 후 버튼 활성화 시각(ms)
+        // 3~5초 랜덤 카운트다운 후 신호 전송
         const randomCountdown = Math.floor(Math.random() * 3) + 3; // 3,4,5
-        const canFireAt = Date.now() + randomCountdown * 1000;
-        const signalPayload = { 
-          ...signal, 
-          gameId: game.id,
-          matchId: data.matchId,
-          timestamp: Date.now(), // 정확한 타임스탬프 추가
-          serverTime: new Date().toISOString(),
-          canFireAt, // 버튼 활성화 시각(ms)
-        };
+        setTimeout(async () => {
+          const canFireAt = Date.now();
+          const signalPayload = { 
+            ...signal, 
+            gameId: game.id,
+            matchId: data.matchId,
+            timestamp: Date.now(), // 정확한 타임스탬프 추가
+            serverTime: new Date().toISOString(),
+            canFireAt, // 버튼 활성화 시각(ms)
+          };
+          // 병렬로 신호 전송
+          await this.broadcastToMatch(match, 'signal', signalPayload);
+          console.log(`📡 신호 전송 완료: ${signal.type} (value: ${signal.value})`);
+        }, randomCountdown * 1000);
         
-        // 병렬로 신호 전송
-        await this.broadcastToMatch(match, 'signal', signalPayload);
-        console.log(`📡 신호 전송 완료: ${signal.type} (value: ${signal.value})`);
-
-        // 4초 카운트다운 후 10초 대기 타이머 시작
+        // 4초 카운트다운 후 10초 대기 타이머 시작 (신호 전송 이후에 동작해야 함)
         setTimeout(() => {
           // 10초 대기 타이머 (카운트다운 끝난 뒤)
           setTimeout(async () => {
@@ -167,7 +168,7 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
               // 신호가 1개 이상이면 아무 처리도 하지 않음 (판정은 handleSendSignal에서)
             }
           }, 10000); // 10초 대기
-        }, 4000); // 4초 카운트다운
+        }, (randomCountdown + 4) * 1000); // 신호 전송 이후 4초 + 10초
       }
     }
   }
@@ -198,14 +199,22 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
       this.logger.log(`[send_signal] signals.length === 2, judgeGame 호출`);
       if (state.timer) clearTimeout(state.timer);
       this.gameSignalState.delete(data.gameId); // 먼저 삭제해서 중복 방지
-      await this.judgeGame(game, state.signals);
+      if (game.status !== GameStatus.FINISHED) {
+        await this.judgeGame(game, state.signals);
+      } else {
+        this.logger.log(`[send_signal] game.status is FINISHED, judgeGame 호출하지 않음`);
+      }
       return;
     }
     if (state.signals.length === 1) {
       this.logger.log(`[send_signal] signals.length === 1, 5초 타이머 시작`);
       state.timer = setTimeout(async () => {
         this.logger.log(`[send_signal] judgeGame 호출 (타이머 5초 만료)`);
-        await this.judgeGame(game, state.signals);
+        if (game.status !== GameStatus.FINISHED) {
+          await this.judgeGame(game, state.signals);
+        } else {
+          this.logger.log(`[send_signal] (타이머) game.status is FINISHED, judgeGame 호출하지 않음`);
+        }
         this.gameSignalState.delete(data.gameId);
       }, 5000);
     }
@@ -213,6 +222,7 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   // 게임 판정 및 점수/연승 처리
   private async judgeGame(game: any, signals: { userId: string, time: number }[]) {
+    this.logger.log(`[judgeGame] 진입: gameId=${game.id}, signals.length=${signals.length}, game.status=${game.status}`);
     if (game.status === GameStatus.FINISHED) {
       this.logger.log(`[judgeGame] 이미 FINISHED 상태, 중복 판정 방지`);
       return;
@@ -239,7 +249,26 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
       loserId = (game.user1Id === winnerId) ? game.user2Id : game.user1Id;
       reason = '판정승(상대 신호 없음)';
     } else {
+      // 무효 경기: 아무 기록도 변경하지 않음
+      this.logger.log(`[judgeGame] signals.length === 0, 무효 경기 처리. 승/패/연승 기록 변경 없음.`);
       reason = '무효(둘 다 신호를 안 보냄)';
+      winnerId = null;
+      loserId = null;
+      // 게임 상태만 FINISHED로 변경
+      game.status = GameStatus.FINISHED;
+      game.finishedAt = new Date();
+      game.winnerId = null;
+      game.reward = 0;
+      await this.gameUseCase.updateGame(game);
+      await this.broadcastToMatch(match, 'game_result', {
+        winnerId: null,
+        reward: 0,
+        gameId: game.id,
+        reason,
+        winnerUser: null,
+        loserUser: null,
+      });
+      return;
     }
 
     this.logger.log(`[judgeGame] winnerId: ${winnerId}, loserId: ${loserId}, reason: ${reason}`);

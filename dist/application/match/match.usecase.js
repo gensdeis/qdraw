@@ -18,6 +18,12 @@ class MatchUseCase {
         const match = new match_entity_1.Match((0, uuid_1.v4)(), userId);
         return this.matchRepository.create(match);
     }
+    async createMatch(user1Id, user2Id) {
+        const match = new match_entity_1.Match((0, uuid_1.v4)(), user1Id);
+        match.user2Id = user2Id;
+        match.status = match_entity_1.MatchStatus.READY;
+        return this.matchRepository.create(match);
+    }
     async cancelMatch(userId) {
         const waiting = await this.matchRepository.findWaiting();
         if (waiting && waiting.user1Id === userId && !waiting.user2Id) {

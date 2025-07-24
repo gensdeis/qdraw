@@ -6,6 +6,7 @@ import { UserOrmEntity } from './infrastructure/db/user.orm-entity';
 import { MatchModule } from './interface/controllers/match.module';
 import { GameModule } from './interface/controllers/game.module';
 import { GameGatewayModule } from './interface/gateways/game.gateway.module';
+import { RoomGatewayModule } from './interface/gateways/room.gateway.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { GameGatewayModule } from './interface/gateways/game.gateway.module';
     MatchModule,
     GameModule,
     GameGatewayModule,
+    RoomGatewayModule,
   ],
 })
 export class AppModule {}

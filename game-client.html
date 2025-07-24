@@ -304,8 +304,6 @@
 
             <div class="status" id="status">대기 중...</div>
             
-            <button class="btn-danger" id="cancelButton" onclick="cancelMatch()" style="display: none;">매칭 취소</button>
-            
             <div class="countdown" id="countdown" style="display: none;"></div>
             
             <button class="game-button" id="gameButton" onclick="clickButton()" disabled>
@@ -315,6 +313,42 @@
             <div class="result" id="result" style="display: none;"></div>
             
             <button class="btn-success" id="playAgainButton" onclick="playAgain()" style="display: none;">다시 플레이</button>
+
+            <div style="margin-bottom: 20px;">
+                <button class="btn-primary" id="startMatchButton" onclick="requestMatch()">매칭 시작</button>
+                <button class="btn-success" id="createRoomButton" onclick="createRoom()">방 생성</button>
+                <button class="btn-primary" id="findRoomButton" onclick="openFindRoomModal()">방 찾기</button>
+            </div>
+            <div id="roomSection" style="display:none; margin-bottom: 20px;">
+                <div id="roomInfo"></div>
+                <div id="inviteCodeSection" style="margin:10px 0;"></div>
+                <div id="joinRoomSection" style="margin:10px 0;">
+                    <input type="text" id="joinRoomCode" maxlength="6" placeholder="초대코드 입력" style="width:120px; text-transform:uppercase;">
+                    <button onclick="joinRoom()">입장</button>
+                </div>
+                <button class="btn-danger" id="deleteRoomButton" onclick="deleteRoom()" style="display:none;">방 삭제</button>
+                <button class="btn-primary" id="leaveRoomButton" onclick="leaveRoom()" style="display:none;">방 나가기</button>
+                <button class="btn-info" id="showRoomInfoButton" onclick="showRoomInfoModal()" style="display:none;">방 정보 보기</button>
+                <button class="btn-primary" id="roomReadyButton" onclick="roomReady()" style="display:none; margin-top:10px;">게임 준비</button>
+                <div id="roomReadyStatus" style="margin-top:10px; color:#fff;"></div>
+            </div>
+            <!-- 방 찾기 모달 -->
+            <div id="findRoomModal" style="display:none; position:fixed; left:0; top:0; width:100vw; height:100vh; background:rgba(0,0,0,0.4); z-index:1000; justify-content:center; align-items:center;">
+                <div style="background:white; color:#333; border-radius:10px; padding:30px; min-width:300px; position:relative; margin:100px auto; text-align:center;">
+                    <span style="position:absolute; right:15px; top:10px; font-size:24px; cursor:pointer;" onclick="closeFindRoomModal()">&times;</span>
+                    <h3>초대코드로 방 찾기</h3>
+                    <input type="text" id="modalJoinRoomCode" maxlength="6" placeholder="초대코드 입력" style="width:120px; text-transform:uppercase;">
+                    <button onclick="modalJoinRoom()">입장</button>
+                </div>
+            </div>
+            <!-- 방 정보 보기 모달 -->
+            <div id="roomInfoModal" style="display:none; position:fixed; left:0; top:0; width:100vw; height:100vh; background:rgba(0,0,0,0.4); z-index:1000; justify-content:center; align-items:center;">
+                <div style="background:white; color:#333; border-radius:10px; padding:30px; min-width:300px; position:relative; margin:100px auto; text-align:center;">
+                    <span style="position:absolute; right:15px; top:10px; font-size:24px; cursor:pointer;" onclick="closeRoomInfoModal()">&times;</span>
+                    <h3>방 정보</h3>
+                    <div id="roomInfoModalContent"></div>
+                </div>
+            </div>
         </div>
 
         <!-- 로그 -->
@@ -322,7 +356,7 @@
     </div>
 
     <script>
-        const SERVER_IP = 'localhost';
+        const SERVER_IP = '175.123.53.74';
         const API_BASE_URL = `http://${SERVER_IP}:13001`;
         let socket;
         let currentUser = null;
@@ -331,6 +365,8 @@
         let isInMatch = false;
         let isGameActive = false;
         let countdownInterval = null;
+        let roomSocket;
+        let currentRoom = null;
 
         // 로그 함수
         function addLog(message, type = 'info') {
@@ -366,10 +402,10 @@
                     updateUserStatsUI();
                     fetchAndRenderRankings();
                     connectSocket();
-                    // 최초 로그인 후 자동 매칭 요청
-                    if (currentUser) {
-                        requestMatch();
-                    }
+                    // 최초 로그인 후 자동 매칭 요청 제거
+                    // if (currentUser) {
+                    //     requestMatch();
+                    // }
                 } else {
                     addLog(`로그인 실패: ${data.message}`, 'error');
                 }
@@ -454,21 +490,30 @@
                 updateStatus('매칭 대기 중...', 'waiting');
                 isInMatch = true;
                 matchId = data.match.id;
-                document.getElementById('cancelButton').style.display = 'block';
+                // 매칭 대기 중에는 버튼 비활성화
+                const gameButton = document.getElementById('gameButton');
+                gameButton.disabled = true;
+                gameButton.textContent = '대기 중...';
+                gameButton.className = 'game-button disabled';
             });
 
             socket.on('match_found', (data) => {
                 addLog('매칭 완료! 상대방을 찾았습니다.', 'success');
-                updateStatus('매칭 완료! 방 준비 중...', 'ready');
+                updateStatus('게임 시작 대기 중...', 'playing');
                 matchId = data.match.id;
 
-                // 매칭 버튼 UI 갱신
-                document.getElementById('cancelButton').style.display = 'none';
+                // 매칭 완료 후 게임 시작 대기(버튼 회색, 비활성화, 텍스트 변경)
+                const gameButton = document.getElementById('gameButton');
+                gameButton.disabled = true;
+                gameButton.textContent = '곧 시작합니다...';
+                gameButton.className = 'game-button disabled';
 
                 // 1초 후 방 준비 신호 전송
                 setTimeout(() => {
                     socket.emit('room_ready', { matchId, userId: currentUser.id });
                     addLog('방 준비 신호 전송', 'info');
+                    // 매칭 시작 버튼 숨김
+                    document.getElementById('startMatchButton').style.display = 'none';
                 }, 1000);
             });
 
@@ -497,7 +542,13 @@
                 isGameActive = false;
                 clearInterval(countdownInterval);
                 
-                if (data.winnerId === currentUser.id) {
+                if (data.reason && data.reason.startsWith('무효')) {
+                    addLog('무효 경기입니다.', 'warning');
+                    showResult('무효 경기', 'draw');
+                    document.getElementById('gameButton').disabled = true;
+                    document.getElementById('gameButton').textContent = '게임 종료';
+                    document.getElementById('gameButton').className = 'game-button disabled';
+                } else if (data.winnerId === currentUser.id) {
                     addLog(`🎉 승리! 점수: ${data.reward}점`, 'success');
                     showResult('승리!', 'win');
                     updateStats(data.reward, true);
@@ -533,51 +584,134 @@
         // 매칭 요청
         function requestMatch() {
             if (!socket || !currentUser) return;
-            
             socket.emit('match_request', { userId: currentUser.id });
             addLog('매칭 요청 전송', 'info');
             updateStatus('매칭 요청 중...', 'waiting');
+            // 버튼을 매칭 취소로 변경 및 항상 보이게
+            const btn = document.getElementById('startMatchButton');
+            btn.textContent = '매칭 취소';
+            btn.onclick = cancelMatch;
+            btn.style.display = 'block';
         }
 
-        // 매칭 취소
         function cancelMatch() {
             if (!socket || !matchId) return;
-            
             socket.emit('room_cancel', { matchId, userId: currentUser.id });
             addLog('매칭 취소', 'warning');
             updateStatus('매칭 취소됨', 'waiting');
-            
-            document.getElementById('cancelButton').style.display = 'none';
+            // 버튼을 매칭 시작으로 복구 및 보이게
+            const btn = document.getElementById('startMatchButton');
+            btn.textContent = '매칭 시작';
+            btn.onclick = requestMatch;
+            btn.style.display = 'block';
             isInMatch = false;
             matchId = null;
         }
 
-        // 게임 시작
-        function startGame(signalData, timeDiff) {
-            isGameActive = true;
-            updateStatus('게임 시작! 버튼을 클릭하세요!', 'playing');
+        // 서버 이벤트에서 버튼 상태 복구
+        function restoreMatchButton() {
+            const btn = document.getElementById('startMatchButton');
+            btn.textContent = '매칭 시작';
+            btn.onclick = requestMatch;
+            btn.style.display = 'block';
+        }
+
+        // 매칭 대기 중...
+        socket.on('match_waiting', (data) => {
+            addLog('매칭 대기 중...', 'warning');
+            updateStatus('매칭 대기 중...', 'waiting');
+            isInMatch = true;
+            matchId = data.match.id;
+            // 매칭 취소 버튼 항상 보이게
+            const btn = document.getElementById('startMatchButton');
+            btn.textContent = '매칭 취소';
+            btn.onclick = cancelMatch;
+            btn.style.display = 'block';
+        });
+
+        // 매칭 완료
+        socket.on('match_found', (data) => {
+            addLog('매칭 완료! 상대방을 찾았습니다.', 'success');
+            updateStatus('게임 시작 대기 중...', 'playing');
+            matchId = data.match.id;
+            // 매칭 완료 시 버튼 숨김
+            const btn = document.getElementById('startMatchButton');
+            btn.style.display = 'none';
+        });
+
+        // 게임 종료 시에는 매칭 시작 버튼 숨김 및 안내 메시지 제거
+        socket.on('game_result', () => {
+            const btn = document.getElementById('startMatchButton');
+            btn.style.display = 'none';
+            const statusElement = document.getElementById('status');
+            statusElement.textContent = '';
+            statusElement.className = 'status';
+        });
+
+        // 매칭 취소/종료/연결 해제 등에서는 버튼 복구
+        socket.on('room_cancel', () => {
+            restoreMatchButton();
+        });
+        socket.on('disconnect', () => {
+            restoreMatchButton();
+        });
+
+        // 게임 시작 함수
+        function startGame(signalData) {
+            addLog('게임 시작!', 'success');
+            updateStatus('게임 시작! 버튼을 클릭하세요!');
+            
+            const gameButton = document.getElementById('gameButton');
+            gameButton.disabled = false;
+            gameButton.textContent = 'CLICK!';
+            gameButton.style.backgroundColor = '#dc3545';
+            gameButton.onclick = () => sendGameSignal(signalData);
+            
+            // 서버에서 지정한 시간까지 버튼 비활성화
+            if (signalData.canFireAt) {
+                const now = Date.now();
+                const waitTime = Math.max(0, signalData.canFireAt - now);
+                if (waitTime > 0) {
+                    gameButton.disabled = true;
+                    gameButton.textContent = '대기 중...';
+                    gameButton.style.backgroundColor = '#666';
+                    setTimeout(() => {
+                        gameButton.disabled = false;
+                        gameButton.textContent = 'CLICK!';
+                        gameButton.style.backgroundColor = '#dc3545';
+                    }, waitTime);
+                }
+            }
+        }
+
+        // 게임 신호 전송
+        function sendGameSignal(signalData) {
+            if (!isGameActive) return;
+            
+            addLog('게임 신호 전송!', 'info');
+            isGameActive = false;
+            
+            // 매칭 게임인지 방 게임인지 구분
+            if (currentRoom) {
+                // 방 게임
+                roomSocket.emit('room_send_signal', {
+                    gameId: signalData.gameId,
+                    matchId: signalData.matchId,
+                    userId: currentUser.id
+                });
+            } else {
+                // 매칭 게임
+                socket.emit('send_signal', {
+                    gameId: signalData.gameId,
+                    matchId: signalData.matchId,
+                    userId: currentUser.id
+                });
+            }
             
             const gameButton = document.getElementById('gameButton');
             gameButton.disabled = true;
-            gameButton.textContent = '대기 중...';
-            gameButton.className = 'game-button disabled';
-            
-            // 서버에서 받은 canFireAt(ms)까지 남은 시간 계산
-            const now = Date.now();
-            const canFireAt = signalData.canFireAt;
-            let waitMs = canFireAt - now;
-            if (waitMs < 0) waitMs = 0;
-            const countdownElement = document.getElementById('countdown');
-            countdownElement.style.display = 'block';
-            countdownElement.textContent = '';
-            
-            // 버튼 활성화 타이머
-            setTimeout(() => {
-                countdownElement.style.display = 'none';
-                gameButton.disabled = false;
-                gameButton.textContent = 'CLICK!';
-                gameButton.className = 'game-button btn-danger';
-            }, waitMs);
+            gameButton.textContent = '신호 전송됨';
+            gameButton.style.backgroundColor = '#666';
         }
 
         // 가짜 신호 표시
@@ -644,22 +778,34 @@
             fetchAndRenderRankings();
         }
 
-        // 다시 플레이
+        // 다시하기
         function playAgain() {
-            document.getElementById('result').style.display = 'none';
-            document.getElementById('playAgainButton').style.display = 'none';
-            document.getElementById('gameButton').disabled = true;
-            document.getElementById('gameButton').textContent = '대기 중...';
-            document.getElementById('gameButton').className = 'game-button';
-            updateStatus('대기 중...', 'ready');
-
+            addLog('다시하기를 선택했습니다.', 'info');
+            
+            // 게임 버튼 숨김
+            document.getElementById('gameButton').style.display = 'none';
+            
+            // 매칭 버튼 복구
+            document.getElementById('startMatchButton').style.display = 'block';
+            document.getElementById('startMatchButton').textContent = '매칭 시작';
+            document.getElementById('startMatchButton').onclick = requestMatch;
+            
+            // 상태 초기화
+            updateStatus('매칭을 시작하세요.');
             isGameActive = false;
-            gameId = null;
-            matchId = null;
             isInMatch = false;
-
-            // 다시 매칭 요청
-            requestMatch();
+            currentMatchId = null;
+            currentGameId = null;
+            
+            // 방 게임인지 매칭 게임인지 구분
+            if (currentRoom) {
+                // 방 게임: 게임 준비 버튼 다시 표시
+                showRoomReadyButton();
+                const roomReadyStatus = document.getElementById('roomReadyStatus');
+                roomReadyStatus.textContent = '';
+            } else {
+                // 매칭 게임: 기존 로직 유지
+            }
         }
 
         // 상태 업데이트
@@ -667,6 +813,333 @@
             const statusElement = document.getElementById('status');
             statusElement.textContent = message;
             statusElement.className = `status ${type}`;
+        }
+
+        // 방 생성
+        function createRoom() {
+            if (!currentUser) {
+                addLog('currentUser 없음', 'error');
+                return;
+            }
+            addLog('방 생성 시도', 'info');
+            if (roomSocket) roomSocket.disconnect();
+            roomSocket = io(`ws://${SERVER_IP}:13001/room`, { transports: ['websocket'] });
+            roomSocket.on('connect', () => {
+                addLog('roomSocket 연결됨', 'info');
+                roomSocket.emit('room_create', { ownerId: currentUser.id });
+                addLog('room_create emit', 'info');
+            });
+            roomSocket.on('room_created', (data) => {
+                addLog('room_created 수신', 'success');
+                currentRoom = data.room;
+                showRoomSection();
+                document.getElementById('inviteCodeSection').textContent = `초대코드: ${currentRoom.code}`;
+                document.getElementById('deleteRoomButton').style.display = 'block';
+                renderRoomInfo(currentRoom);
+                if (currentRoom.ownerId === currentUser.id) {
+                    document.getElementById('joinRoomSection').style.display = 'none';
+                } else {
+                    document.getElementById('joinRoomSection').style.display = 'block';
+                }
+                afterRoomEnter();
+            });
+            roomSocket.on('room_deleted', (data) => {
+                addLog('방이 삭제되었습니다.', 'warning');
+                hideRoomSection();
+            });
+            roomSocket.on('room_info', (data) => {
+                currentRoom = data.room;
+                renderRoomInfo(currentRoom);
+            });
+            roomSocket.on('room_info_failed', (data) => {
+                addLog(data.message, 'error');
+            });
+            roomSocket.on('room_joined', (data) => {
+                addLog('room_joined 수신', 'info');
+                currentRoom = data.room;
+                showRoomSection();
+                document.getElementById('inviteCodeSection').textContent = `초대코드: ${currentRoom.code}`;
+                document.getElementById('deleteRoomButton').style.display = 'none';
+                renderRoomInfo(currentRoom);
+            });
+            roomSocket.on('room_join_failed', (data) => {
+                addLog(data.message, 'error');
+            });
+            roomSocket.on('room_game_start', (data) => {
+                addLog(`방 ${data.code}에서 게임이 시작됩니다!`, 'success');
+                currentMatchId = data.matchId;
+                currentGameId = data.gameId;
+                isInMatch = true;
+                isGameActive = true;
+                
+                // 게임 준비 버튼 숨김
+                hideRoomReadyButton();
+                
+                // 게임 시작 UI 표시
+                updateStatus('게임 시작 대기 중...');
+                const gameButton = document.getElementById('gameButton');
+                gameButton.disabled = true;
+                gameButton.textContent = '곧 시작합니다...';
+                gameButton.style.backgroundColor = '#666';
+                gameButton.style.display = 'block';
+            });
+
+            // 방 게임 준비 상태 업데이트
+            roomSocket.on('room_game_ready_status', (data) => {
+                const readyUsers = data.readyUsers || [];
+                if (readyUsers.length === 1) {
+                    setRoomReadyWaiting();
+                } else if (readyUsers.length === 2) {
+                    setRoomReadyBoth();
+                }
+            });
+
+            // 방 신호 수신
+            roomSocket.on('signal', (signalData) => {
+                addLog('📡 신호 수신!', 'info');
+                startGame(signalData);
+            });
+
+            // 방 게임 결과 수신
+            roomSocket.on('game_result', (data) => {
+                addLog(`게임 결과: ${data.reason}`, 'info');
+                if (data.reason.startsWith('무효')) {
+                    updateStatus('무효 경기');
+                    const gameButton = document.getElementById('gameButton');
+                    gameButton.textContent = '게임 종료';
+                    gameButton.style.backgroundColor = '#666';
+                    gameButton.disabled = true;
+                } else {
+                    updateStatus(`승자: ${data.winnerUser?.name || '알 수 없음'}`);
+                    const gameButton = document.getElementById('gameButton');
+                    gameButton.textContent = '다시하기';
+                    gameButton.style.backgroundColor = '#28a745';
+                    gameButton.disabled = false;
+                    gameButton.onclick = playAgain;
+                }
+                isGameActive = false;
+                isInMatch = false;
+            });
+        }
+
+        // 방 입장
+        function joinRoom() {
+            const code = document.getElementById('joinRoomCode').value.trim().toUpperCase();
+            if (!code || !currentUser) return;
+            if (roomSocket) roomSocket.disconnect();
+            roomSocket = io(`ws://${SERVER_IP}:13001/room`, { transports: ['websocket'] });
+            roomSocket.on('connect', () => {
+                roomSocket.emit('room_join', { code, userId: currentUser.id });
+            });
+            roomSocket.on('room_joined', (data) => {
+                addLog('room_joined 수신', 'info');
+                currentRoom = data.room;
+                showRoomSection();
+                document.getElementById('inviteCodeSection').textContent = `초대코드: ${currentRoom.code}`;
+                document.getElementById('deleteRoomButton').style.display = 'none';
+                renderRoomInfo(currentRoom);
+                document.getElementById('joinRoomSection').style.display = 'block';
+                afterRoomEnter();
+            });
+            roomSocket.on('room_join_failed', (data) => {
+                addLog(data.message, 'error');
+            });
+            roomSocket.on('room_deleted', (data) => {
+                addLog('방이 삭제되었습니다.', 'warning');
+                hideRoomSection();
+            });
+            roomSocket.on('room_info', (data) => {
+                currentRoom = data.room;
+                renderRoomInfo(currentRoom);
+            });
+            roomSocket.on('room_info_failed', (data) => {
+                addLog(data.message, 'error');
+            });
+        }
+
+        // 방 삭제
+        function deleteRoom() {
+            if (!currentRoom || !currentUser || !roomSocket) return;
+            roomSocket.emit('room_delete', { code: currentRoom.code, userId: currentUser.id });
+        }
+
+        // 방 정보 표시
+        function renderRoomInfo(room) {
+            const info = `방장: ${room.ownerId}, 게스트: ${room.guestId || '-'}, 상태: ${room.status}`;
+            document.getElementById('roomInfo').textContent = info;
+        }
+
+        function showRoomSection() {
+            document.getElementById('roomSection').style.display = 'block';
+        }
+        function hideRoomSection() {
+            document.getElementById('roomSection').style.display = 'none';
+            document.getElementById('inviteCodeSection').textContent = '';
+            document.getElementById('roomInfo').textContent = '';
+            restoreMainButtons();
+        }
+
+        // 방 찾기 모달 관련 함수
+        function openFindRoomModal() {
+            document.getElementById('findRoomModal').style.display = 'flex';
+        }
+        function closeFindRoomModal() {
+            document.getElementById('findRoomModal').style.display = 'none';
+        }
+        function modalJoinRoom() {
+            const code = document.getElementById('modalJoinRoomCode').value.trim().toUpperCase();
+            if (!code || !currentUser) return;
+            closeFindRoomModal();
+            if (roomSocket) roomSocket.disconnect();
+            roomSocket = io(`ws://${SERVER_IP}:13001/room`, { transports: ['websocket'] });
+            roomSocket.on('connect', () => {
+                roomSocket.emit('room_join', { code, userId: currentUser.id });
+            });
+            roomSocket.on('room_joined', (data) => {
+                addLog('room_joined 수신', 'info');
+                currentRoom = data.room;
+                showRoomSection();
+                document.getElementById('inviteCodeSection').textContent = `초대코드: ${currentRoom.code}`;
+                document.getElementById('deleteRoomButton').style.display = 'none';
+                renderRoomInfo(currentRoom);
+                document.getElementById('joinRoomSection').style.display = 'block';
+                afterRoomEnter();
+            });
+            roomSocket.on('room_join_failed', (data) => {
+                addLog(data.message, 'error');
+            });
+            roomSocket.on('room_deleted', (data) => {
+                addLog('방이 삭제되었습니다.', 'warning');
+                hideRoomSection();
+            });
+            roomSocket.on('room_info', (data) => {
+                currentRoom = data.room;
+                renderRoomInfo(currentRoom);
+            });
+            roomSocket.on('room_info_failed', (data) => {
+                addLog(data.message, 'error');
+            });
+        }
+
+        // 방에서 게임 준비
+        function roomReady() {
+            if (!currentRoom || !currentUser || !roomSocket) return;
+            addLog('게임 준비 신호를 전송합니다.', 'info');
+            roomSocket.emit('room_game_ready', {
+                code: currentRoom.code,
+                userId: currentUser.id
+            });
+        }
+
+        // 방 게임 준비 버튼 표시
+        function showRoomReadyButton() {
+            const roomReadyButton = document.getElementById('roomReadyButton');
+            roomReadyButton.style.display = 'block';
+            roomReadyButton.textContent = '게임 준비';
+            roomReadyButton.onclick = roomReady;
+        }
+
+        // 방 게임 준비 버튼 숨김
+        function hideRoomReadyButton() {
+            document.getElementById('roomReadyButton').style.display = 'none';
+        }
+
+        // 방 게임 준비 대기 상태
+        function setRoomReadyWaiting() {
+            const roomReadyStatus = document.getElementById('roomReadyStatus');
+            roomReadyStatus.textContent = '다른 플레이어가 준비 중...';
+            roomReadyStatus.style.color = '#ffc107';
+        }
+
+        // 방 게임 준비 완료 상태
+        function setRoomReadyBoth() {
+            const roomReadyStatus = document.getElementById('roomReadyStatus');
+            roomReadyStatus.textContent = '모든 플레이어가 준비 완료!';
+            roomReadyStatus.style.color = '#28a745';
+        }
+
+        // 서버에서 준비 상태/게임 시작 신호 수신
+        if (!window.roomSocketReadyEventsPatched) {
+            window.roomSocketReadyEventsPatched = true;
+            setInterval(() => {
+                if (roomSocket) {
+                    roomSocket.on('room_game_ready_status', (data) => {
+                        // 준비한 유저 목록 표시(선택)
+                        if (data.readyUsers && data.readyUsers.includes(currentUser.id)) {
+                            setRoomReadyWaiting();
+                        }
+                    });
+                    roomSocket.on('room_game_start', (data) => {
+                        setRoomReadyBoth();
+                        addLog('두 명 모두 준비 완료! 게임이 시작됩니다.', 'success');
+                    });
+                }
+            }, 500);
+        }
+
+        // 방 생성/입장 후에만 준비 버튼 노출
+        function afterRoomEnter() {
+            showRoomReadyButton();
+            // 방장/게스트에 따라 버튼 표시
+            if (currentRoom.ownerId === currentUser.id) {
+                // 방장: 방 삭제, 방 정보 보기, 메인 버튼들 숨김
+                document.getElementById('deleteRoomButton').style.display = 'block';
+                document.getElementById('leaveRoomButton').style.display = 'none';
+                document.getElementById('showRoomInfoButton').style.display = 'block';
+                // 방장일 때 메인 버튼들 숨김
+                document.getElementById('startMatchButton').style.display = 'none';
+                document.getElementById('createRoomButton').style.display = 'none';
+                document.getElementById('findRoomButton').style.display = 'none';
+                // 방 정보 섹션들 삭제
+                document.getElementById('roomInfo').style.display = 'none';
+                document.getElementById('inviteCodeSection').style.display = 'none';
+            } else {
+                // 게스트: 방 나가기, 방 정보 보기
+                document.getElementById('deleteRoomButton').style.display = 'none';
+                document.getElementById('leaveRoomButton').style.display = 'block';
+                document.getElementById('showRoomInfoButton').style.display = 'block';
+                // 게스트일 때도 메인 버튼들 숨김
+                document.getElementById('startMatchButton').style.display = 'none';
+                document.getElementById('createRoomButton').style.display = 'none';
+                document.getElementById('findRoomButton').style.display = 'none';
+                // 방 정보 섹션들 삭제
+                document.getElementById('roomInfo').style.display = 'none';
+                document.getElementById('inviteCodeSection').style.display = 'none';
+                // 게스트일 때 joinRoomSection 숨김
+                document.getElementById('joinRoomSection').style.display = 'none';
+            }
+        }
+        // 방을 나갈 때 메인 버튼들 복구
+        function restoreMainButtons() {
+            document.getElementById('startMatchButton').style.display = 'block';
+            document.getElementById('createRoomButton').style.display = 'block';
+            document.getElementById('findRoomButton').style.display = 'block';
+            document.getElementById('roomInfo').style.display = 'block';
+            document.getElementById('inviteCodeSection').style.display = 'block';
+        }
+        // 방 정보 보기 모달
+        function showRoomInfoModal() {
+            if (!currentRoom) return;
+            const content = `
+                <p><strong>방 코드:</strong> ${currentRoom.code}</p>
+                <p><strong>방장:</strong> ${currentRoom.ownerId}</p>
+                <p><strong>게스트:</strong> ${currentRoom.guestId || '대기 중'}</p>
+                <p><strong>상태:</strong> ${currentRoom.status}</p>
+                <p><strong>생성 시간:</strong> ${new Date(currentRoom.createdAt).toLocaleString()}</p>
+            `;
+            document.getElementById('roomInfoModalContent').innerHTML = content;
+            document.getElementById('roomInfoModal').style.display = 'flex';
+        }
+        function closeRoomInfoModal() {
+            document.getElementById('roomInfoModal').style.display = 'none';
+        }
+        // 방 나가기 (게스트용)
+        function leaveRoom() {
+            if (!currentRoom || !currentUser || !roomSocket) return;
+            addLog('방을 나갑니다.', 'warning');
+            hideRoomSection();
+            restoreMainButtons();
+            currentRoom = null;
         }
 
         // 페이지 로드 시 초기화

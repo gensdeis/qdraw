@@ -6,7 +6,7 @@ export class MatchUseCase {
   constructor(private readonly matchRepository: IMatchRepository) {}
 
   async requestMatch(userId: string): Promise<Match> {
-    // ÀÌ¹Ì ´ë±â ÁßÀÎ ¸ÅÄªÀÌ ÀÖÀ¸¸é Âü¿©, ¾øÀ¸¸é »õ·Î »ı¼º
+    // ì´ë¯¸ ëŒ€ê¸° ì¤‘ì¸ ë§¤ì¹˜ê°€ ìˆìœ¼ë©´ ì°¸ê°€, ì—†ìœ¼ë©´ ìƒˆë¡œ ìƒì„±
     const waiting = await this.matchRepository.findWaiting();
     if (waiting && !waiting.user2Id) {
       waiting.user2Id = userId;
@@ -17,8 +17,16 @@ export class MatchUseCase {
     return this.matchRepository.create(match);
   }
 
+  async createMatch(user1Id: string, user2Id: string): Promise<Match> {
+    // ë°©ì—ì„œ ê²Œì„ ì‹œì‘ ì‹œ ì§ì ‘ ë§¤ì¹˜ ìƒì„±
+    const match = new Match(uuidv4(), user1Id);
+    match.user2Id = user2Id;
+    match.status = MatchStatus.READY;
+    return this.matchRepository.create(match);
+  }
+
   async cancelMatch(userId: string): Promise<void> {
-    // ´ë±â ÁßÀÎ ¸ÅÄª¿¡¼­ º»ÀÎ °ÍÀÌ ÀÖÀ¸¸é »èÁ¦
+    // ëŒ€ê¸° ì¤‘ì¸ ë§¤ì¹˜ì—ì„œ ì‚¬ìš©ìê°€ ì·¨ì†Œí•˜ë©´ ë§¤ì¹˜ ì‚­ì œ
     const waiting = await this.matchRepository.findWaiting();
     if (waiting && waiting.user1Id === userId && !waiting.user2Id) {
       await this.matchRepository.delete(waiting.id);

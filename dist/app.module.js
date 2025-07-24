@@ -15,6 +15,7 @@ const user_orm_entity_1 = require("./infrastructure/db/user.orm-entity");
 const match_module_1 = require("./interface/controllers/match.module");
 const game_module_1 = require("./interface/controllers/game.module");
 const game_gateway_module_1 = require("./interface/gateways/game.gateway.module");
+const room_gateway_module_1 = require("./interface/gateways/room.gateway.module");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -32,6 +33,7 @@ exports.AppModule = AppModule = __decorate([
             match_module_1.MatchModule,
             game_module_1.GameModule,
             game_gateway_module_1.GameGatewayModule,
+            room_gateway_module_1.RoomGatewayModule,
         ],
     })
 ], AppModule);
